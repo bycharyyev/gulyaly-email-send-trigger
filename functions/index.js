@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { Firestore } from "@google-cloud/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onRequest } from "firebase-functions/v2/https";
@@ -7,9 +7,13 @@ import { logger } from "firebase-functions";
 import nodemailer from "nodemailer";
 import Handlebars from "handlebars";
 
+import { getTemplate, processTemplate } from "./src/templates";
+import { checkDocumentSize, checkRecipientCount, sanitizeData, isValidEmail } from "./src/validation";
+import { getUserData, getUserLanguage } from "./src/users";
+
 // Инициализация Firebase Admin
 const app = initializeApp();
-const db = getFirestore();
+const db = new Firestore();
 const auth = getAuth();
 
 // Константы
@@ -104,106 +108,6 @@ const TEMPLATES = {
   }
 };
 
-// Функции для проверки размера документа и количества получателей
-const checkDocumentSize = (data) => {
-  const size = JSON.stringify(data).length / 1024;
-  if (size > MAX_DOCUMENT_SIZE_KB) {
-    throw new Error(`Document size exceeds limit of ${MAX_DOCUMENT_SIZE_KB}KB`);
-  }
-};
-
-const checkRecipientCount = (recipients) => {
-  if (recipients.length > MAX_RECIPIENTS) {
-    throw new Error(`Maximum number of recipients (${MAX_RECIPIENTS}) exceeded`);
-  }
-};
-
-// Функция для получения данных пользователя
-const getUserData = async (userId, userCollection) => {
-  if (!userId || !userCollection) return null;
-  try {
-    const userDoc = await db.collection(userCollection).doc(userId).get();
-    return userDoc.exists ? userDoc.data() : null;
-  } catch (error) {
-    logger.error("Error getting user data:", error);
-    return null;
-  }
-};
-
-// Функция для определения языка пользователя
-const getUserLanguage = (docData, userData) => {
-  // Проверяем язык в документе
-  if (docData.language && SUPPORTED_LANGUAGES[docData.language]) {
-    return docData.language;
-  }
-  
-  // Проверяем язык в данных пользователя
-  if (userData?.language && SUPPORTED_LANGUAGES[userData.language]) {
-    return userData.language;
-  }
-  
-  // Возвращаем язык по умолчанию
-  return process.env.DEFAULT_LANGUAGE || "ru";
-};
-
-// Функция для получения шаблона
-const getTemplate = (templateName, language) => {
-  if (!templateName || !TEMPLATES[templateName]) {
-    return null;
-  }
-  
-  // Проверяем наличие шаблона на запрошенном языке
-  if (TEMPLATES[templateName][language]) {
-    return TEMPLATES[templateName][language];
-  }
-  
-  // Если нет, пробуем английский
-  if (TEMPLATES[templateName].en) {
-    return TEMPLATES[templateName].en;
-  }
-  
-  // Если и английского нет, берем первый доступный язык
-  const availableLanguages = Object.keys(TEMPLATES[templateName]);
-  if (availableLanguages.length > 0) {
-    return TEMPLATES[templateName][availableLanguages[0]];
-  }
-  
-  return null;
-};
-
-// Функция для обработки шаблона
-const processTemplate = (template, data, engine = "simple") => {
-  if (engine === "handlebars") {
-    const compiledTemplate = Handlebars.compile(template);
-    return compiledTemplate(data);
-  }
-  
-  // Простая замена переменных
-  return template.replace(/\${([^}]+)}/g, (match, key) => {
-    return data[key] || match;
-  });
-};
-
-// Функция для очистки чувствительных данных
-const sanitizeData = (data) => {
-  const sanitized = { ...data };
-  const sensitiveFields = ["password", "token", "secret", "key"];
-  
-  sensitiveFields.forEach(field => {
-    if (sanitized[field]) {
-      sanitized[field] = "***HIDDEN***";
-    }
-  });
-  
-  return sanitized;
-};
-
-// Функция для проверки email
-const isValidEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
 // Функция для повторных попыток
 const withRetry = async (fn, maxRetries = 3, delay = 5000) => {
   let lastError;
@@ -213,8 +117,6 @@ const withRetry = async (fn, maxRetries = 3, delay = 5000) => {
       return await fn();
     } catch (error) {
       lastError = error;
-      logger.warn(`Attempt ${i + 1} failed:`, error);
-      
       if (i < maxRetries - 1) {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -225,228 +127,81 @@ const withRetry = async (fn, maxRetries = 3, delay = 5000) => {
 };
 
 // Основная функция отправки email
-export const sendEmail = onDocumentCreated(async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) {
-    logger.error("No data associated with the event");
-    return;
-  }
-  
-  const documentData = snapshot.data();
-  const documentId = snapshot.id;
-  const collectionPath = event.params.collectionPath;
+const sendEmail = async (data) => {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: process.env.SMTP_PORT === 465,
+    auth: {
+      user: process.env.SMTP_USERNAME,
+      pass: process.env.SMTP_PASSWORD
+    }
+  });
+
+  return await transporter.sendMail(data);
+};
+
+// Cloud Function для отправки email при создании документа
+export const sendEmailOnCreate = onDocumentCreated(process.env.COLLECTION_PATH, async (event) => {
+  const docData = event.data.data();
   
   try {
-    // Проверяем размер документа
-    checkDocumentSize(documentData);
+    // Проверки
+    checkDocumentSize(docData);
+    checkRecipientCount(Array.isArray(docData.to) ? docData.to : [docData.to]);
     
     // Получаем данные пользователя
-    const userData = await getUserData(
-      documentData[process.env.USER_ID_FIELD],
-      process.env.USER_COLLECTION
-    );
+    const userData = await getUserData(docData.userId, docData.userCollection);
+    const language = getUserLanguage(docData, userData);
     
-    // Определяем язык
-    const language = getUserLanguage(documentData, userData);
-    logger.info(`Using language: ${language}`);
-    
-    // Получаем шаблон
-    const templateName = documentData.templateName;
-    const template = templateName ? getTemplate(templateName, language) : null;
-    
-    // Подготавливаем данные для шаблона
-    const templateData = {
-      documentId,
-      collectionPath,
-      documentData: JSON.stringify(sanitizeData(documentData), null, 2),
-      user: userData,
-      appName: process.env.APP_NAME
+    // Получаем и обрабатываем шаблон
+    const template = getTemplate(docData.template, language);
+    const emailData = {
+      from: process.env.FROM_EMAIL,
+      to: docData.to,
+      subject: processTemplate(template?.subject || docData.subject, { ...docData, user: userData }),
+      text: processTemplate(template?.text || docData.text, { ...docData, user: userData }, docData.templateEngine),
+      html: processTemplate(template?.html || docData.html, { ...docData, user: userData }, docData.templateEngine)
     };
     
-    // Создаем транспорт для отправки email
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT),
-      secure: process.env.SMTP_PORT === "465",
-      auth: {
-        user: process.env.SMTP_USERNAME,
-        pass: process.env.SMTP_PASSWORD
-      }
-    });
-    
-    // Определяем получателей
-    const recipients = documentData.to || process.env.TO_EMAIL;
-    if (!recipients) {
-      throw new Error("No recipients specified");
-    }
-    
-    const recipientList = Array.isArray(recipients) ? recipients : recipients.split(",").map(email => email.trim());
-    checkRecipientCount(recipientList);
-    
-    // Проверяем email адреса
-    recipientList.forEach(email => {
-      if (!isValidEmail(email)) {
-        throw new Error(`Invalid email address: ${email}`);
-      }
-    });
-    
-    // Подготавливаем содержимое письма
-    let subject, text, html;
-    
-    if (template) {
-      subject = processTemplate(template.subject, templateData, process.env.TEMPLATE_ENGINE);
-      text = processTemplate(template.text, templateData, process.env.TEMPLATE_ENGINE);
-      html = processTemplate(template.html, templateData, process.env.TEMPLATE_ENGINE);
-    } else {
-      subject = process.env.EMAIL_SUBJECT || "Новое уведомление";
-      text = processTemplate(process.env.EMAIL_TEMPLATE, templateData, process.env.TEMPLATE_ENGINE);
-      html = process.env.ENABLE_HTML === "true" ? text : undefined;
-    }
-    
     // Отправляем email с повторными попытками
-    await withRetry(async () => {
-      await transporter.sendMail({
-        from: process.env.FROM_EMAIL,
-        to: recipientList.join(", "),
-        subject,
-        text,
-        html
-      });
-    }, parseInt(process.env.MAX_RETRIES), parseInt(process.env.RETRY_DELAY) * 1000);
+    await withRetry(() => sendEmail(emailData));
     
-    // Логируем успешную отправку
-    if (process.env.ENABLE_LOGGING === "true") {
-      await db.collection(process.env.LOG_COLLECTION).add({
-        timestamp: new Date(),
-        documentId,
-        collectionPath,
-        recipients: recipientList,
-        status: "success",
-        template: templateName
-      });
-    }
+    // Логируем успех
+    logger.info("Email sent successfully", sanitizeData(emailData));
     
-    logger.info(`Email sent successfully to ${recipientList.join(", ")}`);
   } catch (error) {
     logger.error("Error sending email:", error);
-    
-    // Логируем ошибку
-    if (process.env.ENABLE_LOGGING === "true") {
-      await db.collection(process.env.LOG_COLLECTION).add({
-        timestamp: new Date(),
-        documentId,
-        collectionPath,
-        error: error.message,
-        status: "error"
-      });
-    }
-    
     throw error;
   }
 });
 
-// API для отправки email
+// API endpoint для отправки email
 export const sendEmailApi = onRequest(async (req, res) => {
-  // Проверяем аутентификацию
-  if (process.env.API_AUTH_REQUIRED === "true") {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    
-    try {
-      const token = authHeader.split("Bearer ")[1];
-      await auth.verifyIdToken(token);
-    } catch (error) {
-      res.status(401).json({ error: "Invalid token" });
-      return;
-    }
-  }
-  
   try {
-    const { to, subject, text, html, templateName, templateData, language } = req.body;
+    const { to, subject, template, data, language } = req.body;
     
-    // Проверяем обязательные параметры
-    if (!to) {
-      res.status(400).json({ error: "Missing required parameter: to" });
-      return;
+    // Валидация
+    if (!to || !isValidEmail(to)) {
+      throw new Error("Invalid recipient email");
     }
     
-    // Проверяем получателей
-    const recipientList = Array.isArray(to) ? to : to.split(",").map(email => email.trim());
-    checkRecipientCount(recipientList);
-    
-    // Проверяем email адреса
-    recipientList.forEach(email => {
-      if (!isValidEmail(email)) {
-        throw new Error(`Invalid email address: ${email}`);
-      }
-    });
-    
-    // Создаем транспорт для отправки email
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT),
-      secure: process.env.SMTP_PORT === "465",
-      auth: {
-        user: process.env.SMTP_USERNAME,
-        pass: process.env.SMTP_PASSWORD
-      }
-    });
-    
-    // Если указан шаблон, используем его
-    if (templateName) {
-      const template = getTemplate(templateName, language || process.env.DEFAULT_LANGUAGE);
-      if (!template) {
-        res.status(400).json({ error: `Template not found: ${templateName}` });
-        return;
-      }
-      
-      const data = {
-        ...templateData,
-        appName: process.env.APP_NAME
-      };
-      
-      subject = processTemplate(template.subject, data, process.env.TEMPLATE_ENGINE);
-      text = processTemplate(template.text, data, process.env.TEMPLATE_ENGINE);
-      html = processTemplate(template.html, data, process.env.TEMPLATE_ENGINE);
-    }
+    // Получаем и обрабатываем шаблон
+    const emailTemplate = getTemplate(template, language);
+    const emailData = {
+      from: process.env.FROM_EMAIL,
+      to,
+      subject: processTemplate(emailTemplate?.subject || subject, data),
+      text: processTemplate(emailTemplate?.text || data.text, data),
+      html: processTemplate(emailTemplate?.html || data.html, data)
+    };
     
     // Отправляем email
-    await transporter.sendMail({
-      from: process.env.FROM_EMAIL,
-      to: recipientList.join(", "),
-      subject,
-      text,
-      html
-    });
+    await sendEmail(emailData);
     
-    // Логируем успешную отправку
-    if (process.env.ENABLE_LOGGING === "true") {
-      await db.collection(process.env.LOG_COLLECTION).add({
-        timestamp: new Date(),
-        recipients: recipientList,
-        status: "success",
-        template: templateName,
-        source: "api"
-      });
-    }
-    
-    res.json({ success: true, message: "Email sent successfully" });
+    res.json({ success: true });
   } catch (error) {
-    logger.error("Error in sendEmailApi:", error);
-    
-    // Логируем ошибку
-    if (process.env.ENABLE_LOGGING === "true") {
-      await db.collection(process.env.LOG_COLLECTION).add({
-        timestamp: new Date(),
-        error: error.message,
-        status: "error",
-        source: "api"
-      });
-    }
-    
+    logger.error("API Error:", error);
     res.status(500).json({ error: error.message });
   }
 }); 
