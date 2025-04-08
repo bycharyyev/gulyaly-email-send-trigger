@@ -13,13 +13,13 @@ import { getUserData, getUserLanguage } from "./src/users";
 
 // Инициализация Firebase Admin
 const app = initializeApp();
-const db = new Firestore();
+const firestore = new Firestore();
 const auth = getAuth();
 
 // Константы
-const MAX_RECIPIENTS = 10;
+const MAX_RECIPIENTS = 100;
 const MAX_DOCUMENT_SIZE_KB = 1024;
-const MAX_EMAIL_SIZE_KB = 10240;
+const MAX_EMAIL_SIZE_KB = 1024;
 
 // Поддерживаемые языки
 const SUPPORTED_LANGUAGES = {
@@ -42,71 +42,35 @@ const TEMPLATES = {
   birthday: {
     ru: {
       subject: "С Днем Рождения!",
-      text: "Дорогой {{user.name}},\n\nПоздравляем вас с Днем Рождения! Желаем вам всего самого наилучшего!\n\nС уважением,\n{{appName}}",
-      html: `
-        <h1>С Днем Рождения!</h1>
-        <p>Дорогой <strong>{{user.name}}</strong>,</p>
-        <p>Поздравляем вас с Днем Рождения! Желаем вам всего самого наилучшего!</p>
-        <p>С уважением,<br>{{appName}}</p>
-      `
+      text: "Поздравляем {{name}} с Днем Рождения!"
     },
     en: {
       subject: "Happy Birthday!",
-      text: "Dear {{user.name}},\n\nHappy Birthday! We wish you all the best!\n\nBest regards,\n{{appName}}",
-      html: `
-        <h1>Happy Birthday!</h1>
-        <p>Dear <strong>{{user.name}}</strong>,</p>
-        <p>Happy Birthday! We wish you all the best!</p>
-        <p>Best regards,<br>{{appName}}</p>
-      `
-    },
-    es: {
-      subject: "¡Feliz Cumpleaños!",
-      text: "Estimado/a {{user.name}},\n\n¡Feliz Cumpleaños! ¡Le deseamos todo lo mejor!\n\nSaludos,\n{{appName}}",
-      html: `
-        <h1>¡Feliz Cumpleaños!</h1>
-        <p>Estimado/a <strong>{{user.name}}</strong>,</p>
-        <p>¡Feliz Cumpleaños! ¡Le deseamos todo lo mejor!</p>
-        <p>Saludos,<br>{{appName}}</p>
-      `
+      text: "Congratulations {{name}} on your Birthday!"
     }
   },
   verification: {
     ru: {
       subject: "Подтверждение email",
-      text: "Дорогой {{user.name}},\n\nПожалуйста, подтвердите ваш email, перейдя по ссылке: {{verificationLink}}\n\nС уважением,\n{{appName}}",
-      html: `
-        <h1>Подтверждение email</h1>
-        <p>Дорогой <strong>{{user.name}}</strong>,</p>
-        <p>Пожалуйста, подтвердите ваш email, перейдя по ссылке:</p>
-        <p><a href="{{verificationLink}}">Подтвердить email</a></p>
-        <p>С уважением,<br>{{appName}}</p>
-      `
+      text: "Пожалуйста, подтвердите ваш email: {{verificationLink}}"
     },
     en: {
-      subject: "Email Verification",
-      text: "Dear {{user.name}},\n\nPlease verify your email by clicking the link: {{verificationLink}}\n\nBest regards,\n{{appName}}",
-      html: `
-        <h1>Email Verification</h1>
-        <p>Dear <strong>{{user.name}}</strong>,</p>
-        <p>Please verify your email by clicking the link:</p>
-        <p><a href="{{verificationLink}}">Verify Email</a></p>
-        <p>Best regards,<br>{{appName}}</p>
-      `
-    },
-    es: {
-      subject: "Verificación de email",
-      text: "Estimado/a {{user.name}},\n\nPor favor, verifique su email haciendo clic en el enlace: {{verificationLink}}\n\nSaludos,\n{{appName}}",
-      html: `
-        <h1>Verificación de email</h1>
-        <p>Estimado/a <strong>{{user.name}}</strong>,</p>
-        <p>Por favor, verifique su email haciendo clic en el enlace:</p>
-        <p><a href="{{verificationLink}}">Verificar Email</a></p>
-        <p>Saludos,<br>{{appName}}</p>
-      `
+      subject: "Email verification",
+      text: "Please verify your email: {{verificationLink}}"
     }
   }
 };
+
+// Создаем транспорт для отправки email
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: process.env.SMTP_PORT === "465",
+  auth: {
+    user: process.env.SMTP_USERNAME,
+    pass: process.env.SMTP_PASSWORD
+  }
+});
 
 // Функция для повторных попыток
 const withRetry = async (fn, maxRetries = 3, delay = 5000) => {
@@ -155,7 +119,7 @@ export const sendEmailOnCreate = onDocumentCreated(process.env.COLLECTION_PATH, 
     const language = getUserLanguage(docData, userData);
     
     // Получаем и обрабатываем шаблон
-    const template = getTemplate(docData.template, language);
+    const template = TEMPLATES[docData.template]?.[language] || TEMPLATES[docData.template]?.[process.env.DEFAULT_LANGUAGE] || TEMPLATES.verification[language];
     const emailData = {
       from: process.env.FROM_EMAIL,
       to: docData.to,
@@ -187,7 +151,7 @@ export const sendEmailApi = onRequest(async (req, res) => {
     }
     
     // Получаем и обрабатываем шаблон
-    const emailTemplate = getTemplate(template, language);
+    const emailTemplate = TEMPLATES[template]?.[language] || TEMPLATES[template]?.[process.env.DEFAULT_LANGUAGE] || TEMPLATES.verification[language];
     const emailData = {
       from: process.env.FROM_EMAIL,
       to,
@@ -204,4 +168,90 @@ export const sendEmailApi = onRequest(async (req, res) => {
     logger.error("API Error:", error);
     res.status(500).json({ error: error.message });
   }
-}); 
+});
+
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+const nodemailer = require('nodemailer');
+const { getTemplate, processTemplate } = require('./src/templates');
+const { checkDocumentSize, checkRecipientCount, sanitizeData, isValidEmail } = require('./src/validation');
+const { getUserData, getUserLanguage } = require('./src/users');
+
+admin.initializeApp();
+
+const db = admin.firestore();
+
+exports.sendEmail = functions.firestore
+  .document('{collectionPath}/{documentId}')
+  .onCreate(async (snap, context) => {
+    const documentData = snap.data();
+    const collectionPath = context.params.collectionPath;
+    const documentId = context.params.documentId;
+
+    try {
+      // Проверяем размер документа
+      checkDocumentSize(documentData);
+
+      // Получаем получателей
+      const recipients = documentData.recipients || [];
+      checkRecipientCount(recipients);
+
+      // Получаем данные пользователя и язык
+      const userData = await getUserData(documentData.userId, process.env.USER_COLLECTION);
+      const language = getUserLanguage(documentData, userData);
+
+      // Получаем шаблон
+      const template = getTemplate(documentData.template, language);
+      if (!template) {
+        throw new Error(`Template ${documentData.template} not found for language ${language}`);
+      }
+
+      // Обрабатываем шаблон
+      const processedTemplate = processTemplate(template, {
+        ...documentData,
+        userData,
+        documentId
+      });
+
+      // Создаем транспорт
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        secure: process.env.SMTP_PORT === '465',
+        auth: {
+          user: process.env.SMTP_USERNAME,
+          pass: process.env.SMTP_PASSWORD
+        }
+      });
+
+      // Отправляем email
+      const mailOptions = {
+        from: process.env.FROM_EMAIL,
+        to: recipients.join(', '),
+        subject: documentData.subject || 'Notification',
+        html: processedTemplate
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log('Email sent:', info.messageId);
+
+      // Обновляем статус в документе
+      await snap.ref.update({
+        emailStatus: 'sent',
+        emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        emailMessageId: info.messageId
+      });
+
+    } catch (error) {
+      console.error('Error sending email:', error);
+      
+      // Обновляем статус с ошибкой
+      await snap.ref.update({
+        emailStatus: 'error',
+        emailError: error.message,
+        emailErrorAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      throw error;
+    }
+  }); 

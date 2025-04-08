@@ -16,7 +16,13 @@
       ]
     }
   ],
-  "extensions": {},
+  "extensions": {
+    "gulyaly/gulyaly-email-send-trigger": {
+      "version": "0.0.6",
+      "source": "https://github.com/bycharyyev/gulyaly-email-send-trigger.git",
+      "ref": "v0.0.6"
+    }
+  },
   "database": {
     "rules": "database.rules.json"
   }

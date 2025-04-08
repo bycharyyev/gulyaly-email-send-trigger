@@ -1,123 +1,111 @@
 name: gulyaly-email-send-trigger
-version: 0.0.5
+version: 0.0.7
 specVersion: v1beta
-displayName: Email Trigger for Firestore
-description: >-
-  Automatically sends emails when documents are created in Firestore using customizable templates and multiple language support.
+displayName: Email Send Trigger
+description: Отправляет email при создании документа в Firestore
 
-license: Apache-2.0
+# Информация о бренде
+branding:
+  color: "#4285F4"
+  icon: icon.png
 
 author:
-  authorName: Gulyaly Team
-  url: https://github.com/bycharyyev
-
-sourceUrl: https://github.com/bycharyyev/gulyaly-email-send-trigger
-releaseNotesUrl: https://github.com/bycharyyev/gulyaly-email-send-trigger/releases
-
-billingRequired: true
-
-apis:
-  - apiName: firestore.googleapis.com
-    reason: Needed to read and write to Firestore
+  authorName: Gulyaly
+  url: https://github.com/bycharyyev/gulyaly-email-send-trigger
+license: Apache-2.0
 
 roles:
-  - role: datastore.user
-    reason: Allows the extension to read from and write to Cloud Firestore
+  - role: roles/firestore.admin
+    reason: Требуется для чтения и записи документов в Firestore
+  - role: roles/cloudfunctions.developer
+    reason: Требуется для создания и управления Cloud Functions
 
 resources:
-  - name: sendEmailOnCreate
+  - name: sendEmail
     type: firebaseextensions.v1beta.function
-    description: Sends emails when documents are created in the specified collection
+    description: Отправляет email при создании документа в Firestore
     properties:
-      location: ${param:LOCATION}
       runtime: nodejs18
-      sourceRepository:
-        url: https://github.com/bycharyyev/gulyaly-email-send-trigger
-        ref: main
-        path: functions
+      location: us-central1
       eventTrigger:
         eventType: providers/cloud.firestore/eventTypes/document.create
-        resource: projects/${param:PROJECT_ID}/databases/(default)/documents/${param:COLLECTION_PATH}/{documentId}
+        resource: projects/${PROJECT_ID}/databases/(default)/documents/${COLLECTION_PATH}/{documentId}
+      entryPoint: sendEmail
 
 params:
-  - param: LOCATION
-    label: Cloud Functions Location
-    description: Where do you want to deploy the functions created for this extension?
-    type: select
-    options:
-      - label: Iowa (us-central1)
-        value: us-central1
-      - label: South Carolina (us-east1)
-        value: us-east1
-      - label: Belgium (europe-west1)
-        value: europe-west1
-      - label: London (europe-west2)
-        value: europe-west2
-      - label: Hong Kong (asia-east2)
-        value: asia-east2
-    default: us-central1
-    required: true
-
-  - param: COLLECTION_PATH
-    label: Collection Path
-    description: What is the path to the collection that contains the documents that trigger email sending?
-    type: string
-    default: "emails"
-    required: true
-
   - param: SMTP_HOST
     label: SMTP Host
-    description: The hostname of your SMTP server
+    description: Хост SMTP сервера (например, smtp.gmail.com)
     type: string
     required: true
+    validationRegex: "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    validationErrorMessage: "Пожалуйста, введите корректный SMTP хост"
 
   - param: SMTP_PORT
     label: SMTP Port
-    description: The port of your SMTP server
+    description: Порт SMTP сервера (например, 587 для TLS или 465 для SSL)
     type: string
-    default: "587"
     required: true
+    validationRegex: "^(25|465|587|2525)$"
+    validationErrorMessage: "Пожалуйста, введите корректный SMTP порт (25, 465, 587, или 2525)"
 
   - param: SMTP_USERNAME
     label: SMTP Username
-    description: The username for SMTP authentication
+    description: Имя пользователя SMTP (обычно email адрес)
     type: string
     required: true
+    validationRegex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    validationErrorMessage: "Пожалуйста, введите корректный email адрес"
 
   - param: SMTP_PASSWORD
     label: SMTP Password
-    description: The password for SMTP authentication
-    type: secret
+    description: Пароль SMTP (для Gmail используйте пароль приложения)
+    type: string
     required: true
+    secret: true
 
   - param: FROM_EMAIL
     label: From Email
-    description: The email address to send emails from
+    description: Email отправителя (должен соответствовать SMTP_USERNAME)
     type: string
     required: true
+    validationRegex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    validationErrorMessage: "Пожалуйста, введите корректный email адрес"
 
-  - param: DEFAULT_LANGUAGE
-    label: Default Language
-    description: The default language for email templates
-    type: select
-    options:
-      - label: Russian
-        value: ru
-      - label: English
-        value: en
-    default: ru
-    required: true
-
-# Добавляем информацию о бренде
-branding:
-  color: "#4285F4"  # Цвет бренда Google Blue
-  icon: icon.png    # Путь к иконке
-
-  - param: TO_EMAIL
-    label: To Email
-    description: Email адрес получателя (если не указан в документе)
+  - param: COLLECTION_PATH
+    label: Collection Path
+    description: Путь к коллекции Firestore, где будут отслеживаться новые документы
     type: string
-    required: false
+    required: true
+    validationRegex: "^[^/]+(/[^/]+)*$"
+    validationErrorMessage: "Путь коллекции должен быть в формате 'collection' или 'collection/document/collection'"
+
+  - param: USER_COLLECTION
+    label: User Collection
+    description: Путь к коллекции пользователей для получения дополнительных данных
+    type: string
+    required: true
+    default: users
+    validationRegex: "^[^/]+(/[^/]+)*$"
+    validationErrorMessage: "Путь коллекции должен быть в формате 'collection' или 'collection/document/collection'"
+
+  - param: MAX_RECIPIENTS
+    label: Max Recipients
+    description: Максимальное количество получателей в одном email
+    type: number
+    required: true
+    default: 100
+    validationRegex: "^[1-9][0-9]{0,2}$"
+    validationErrorMessage: "Значение должно быть числом от 1 до 999"
+
+  - param: MAX_DOCUMENT_SIZE_KB
+    label: Max Document Size (KB)
+    description: Максимальный размер документа в килобайтах
+    type: number
+    required: true
+    default: 1024
+    validationRegex: "^[1-9][0-9]{2,4}$"
+    validationErrorMessage: "Значение должно быть числом от 100 до 99999"
 
   - param: TEMPLATE_ENGINE
     label: Template Engine
@@ -141,21 +129,18 @@ branding:
       ID документа: ${documentId}
       Содержимое: ${documentData}
 
-  - param: USER_COLLECTION
-    label: User Collection
-    description: Путь к коллекции пользователей
-    type: string
-    required: false
-
   - param: USER_ID_FIELD
     label: User ID Field
     description: Поле в документе, содержащее ID пользователя
     type: string
     required: false
+    default: "userId"
+    validationRegex: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+    validationErrorMessage: "Поле должно начинаться с буквы и содержать только буквы, цифры и подчеркивания"
 
   - param: ENABLE_HTML
     label: Enable HTML
-    description: Включить HTML форматирование
+    description: Включить HTML форматирование в email
     type: string
     required: false
     default: "true"
@@ -167,21 +152,25 @@ branding:
 
   - param: MAX_RETRIES
     label: Max Retries
-    description: Максимальное количество попыток отправки
-    type: string
+    description: Максимальное количество попыток отправки при ошибке
+    type: number
     required: false
-    default: "3"
+    default: 3
+    validationRegex: "^[1-9]$"
+    validationErrorMessage: "Значение должно быть числом от 1 до 9"
 
   - param: RETRY_DELAY
     label: Retry Delay
-    description: Задержка между попытками (в секундах)
-    type: string
+    description: Задержка между попытками отправки (в секундах)
+    type: number
     required: false
-    default: "5"
+    default: 5
+    validationRegex: "^[1-9][0-9]?$"
+    validationErrorMessage: "Значение должно быть числом от 1 до 99"
 
   - param: ENABLE_LOGGING
     label: Enable Logging
-    description: Включить логирование в Firestore
+    description: Включить логирование операций в Firestore
     type: string
     required: false
     default: "true"
@@ -193,10 +182,12 @@ branding:
 
   - param: LOG_COLLECTION
     label: Log Collection
-    description: Коллекция для хранения логов
+    description: Коллекция для хранения логов отправки email
     type: string
     required: false
     default: "email_logs"
+    validationRegex: "^[a-zA-Z][a-zA-Z0-9_]*$"
+    validationErrorMessage: "Название коллекции должно начинаться с буквы и содержать только буквы, цифры и подчеркивания"
 
   - param: SANITIZE_SENSITIVE_DATA
     label: Sanitize Sensitive Data
@@ -209,13 +200,6 @@ branding:
         value: "true"
       - label: Нет
         value: "false"
-
-  - param: MAX_DOCUMENT_SIZE
-    label: Max Document Size
-    description: Максимальный размер документа (в КБ)
-    type: string
-    required: false
-    default: "1024"
 
   - param: MAX_EMAIL_SIZE
     label: Max Email Size
