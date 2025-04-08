@@ -1,0 +1,64 @@
+name: Publish Extension
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          
+      - name: Install Dependencies
+        run: npm ci
+        
+      - name: Build Extension
+        run: npm run build
+        
+      - name: Run Tests
+        run: npm test
+        if: ${{ false }}  # Отключено, пока тесты не добавлены
+
+  publish:
+    needs: build
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+          
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+        
+      - name: Install Dependencies
+        run: npm ci
+        
+      - name: Build Extension
+        run: npm run build
+        
+      - name: Publish Extension
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          firebase ext:dev:upload gulyaly/gulyaly-email-send-trigger --ref=${{ github.ref_name }} --non-interactive 
