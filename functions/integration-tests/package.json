@@ -1,0 +1,13 @@
+{
+  "name": "firestore-trigger-email-integration-tests",
+  "version": "0.0.1",
+  "description": "Интеграционные тесты для расширения Firestore Trigger Email",
+  "main": "test.js",
+  "type": "module",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.8.0"
+  }
+} 
