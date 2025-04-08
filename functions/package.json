@@ -1,6 +1,6 @@
 {
   "name": "gulyaly-email-send-trigger",
-  "version": "0.0.6",
+  "version": "0.0.1",
   "description": "Firebase Extension для отправки email при создании документа в Firestore",
   "main": "index.js",
   "engines": {
