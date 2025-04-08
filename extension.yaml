@@ -92,18 +92,18 @@ params:
   - param: MAX_RECIPIENTS
     label: Max Recipients
     description: Максимальное количество получателей в одном email
-    type: number
+    type: string
     required: true
-    default: 100
+    default: "100"
     validationRegex: "^[1-9][0-9]{0,2}$"
     validationErrorMessage: "Значение должно быть числом от 1 до 999"
 
   - param: MAX_DOCUMENT_SIZE_KB
     label: Max Document Size (KB)
     description: Максимальный размер документа в килобайтах
-    type: number
+    type: string
     required: true
-    default: 1024
+    default: "1024"
     validationRegex: "^[1-9][0-9]{2,4}$"
     validationErrorMessage: "Значение должно быть числом от 100 до 99999"
 
@@ -153,18 +153,18 @@ params:
   - param: MAX_RETRIES
     label: Max Retries
     description: Максимальное количество попыток отправки при ошибке
-    type: number
+    type: string
     required: false
-    default: 3
+    default: "3"
     validationRegex: "^[1-9]$"
     validationErrorMessage: "Значение должно быть числом от 1 до 9"
 
   - param: RETRY_DELAY
     label: Retry Delay
     description: Задержка между попытками отправки (в секундах)
-    type: number
+    type: string
     required: false
-    default: 5
+    default: "5"
     validationRegex: "^[1-9][0-9]?$"
     validationErrorMessage: "Значение должно быть числом от 1 до 99"
 
