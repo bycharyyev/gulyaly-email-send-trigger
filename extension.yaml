@@ -1,5 +1,5 @@
 name: gulyaly-email-send-trigger
-version: 0.0.7
+version: 0.0.1
 specVersion: v1beta
 displayName: Email Send Trigger
 description: Отправляет email при создании документа в Firestore
