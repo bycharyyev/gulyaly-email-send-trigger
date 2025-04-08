@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "description": "Firebase Extension для отправки email при создании документа в Firestore",
   "main": "index.js",
+  "type": "module",
   "engines": {
     "node": "18"
   },
@@ -12,5 +13,13 @@
     "nodemailer": "^6.9.7",
     "handlebars": "^4.7.8"
   },
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  }
 } 

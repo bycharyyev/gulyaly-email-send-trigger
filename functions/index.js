@@ -1,12 +1,12 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { logger } from "firebase-functions";
+import { logger } from "firebase-functions/logger";
 import nodemailer from "nodemailer";
 
-import { getTemplate, processTemplate } from "./src/templates";
-import { checkDocumentSize, checkRecipientCount, sanitizeData } from "./src/validation";
-import { getUserData, getUserLanguage } from "./src/users";
+import { getTemplate, processTemplate } from "./src/templates.js";
+import { checkDocumentSize, checkRecipientCount, sanitizeData } from "./src/validation.js";
+import { getUserData, getUserLanguage } from "./src/users.js";
 
 // Инициализация Firebase Admin
 initializeApp();
