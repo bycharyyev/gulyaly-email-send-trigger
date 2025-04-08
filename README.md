@@ -155,4 +155,4 @@ const sendEmail = async (data) => {
 
 ## Лицензия
 
-Apache-2.0 
+Apache-2.0 # gulyaly-email-send-trigger
