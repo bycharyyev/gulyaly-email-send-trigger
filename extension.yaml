@@ -1,5 +1,5 @@
 name: gulyaly-email-send-trigger
-version: 0.0.8
+version: 0.0.1
 specVersion: v1beta
 displayName: Email Send Trigger
 description: Отправляет email при создании документа в Firestore
@@ -35,50 +35,40 @@ resources:
 params:
   - param: SMTP_HOST
     label: SMTP Host
-    description: Хост SMTP сервера (например, smtp.gmail.com)
+    description: Хост SMTP сервера
     type: string
     required: true
-    validationRegex: "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-    validationErrorMessage: "Пожалуйста, введите корректный SMTP хост"
 
   - param: SMTP_PORT
     label: SMTP Port
-    description: Порт SMTP сервера (например, 587 для TLS или 465 для SSL)
+    description: Порт SMTP сервера
     type: string
     required: true
-    validationRegex: "^(25|465|587|2525)$"
-    validationErrorMessage: "Пожалуйста, введите корректный SMTP порт (25, 465, 587, или 2525)"
 
   - param: SMTP_USERNAME
     label: SMTP Username
-    description: Имя пользователя SMTP (обычно email адрес)
+    description: Имя пользователя SMTP
     type: string
     required: true
-    validationRegex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-    validationErrorMessage: "Пожалуйста, введите корректный email адрес"
 
   - param: SMTP_PASSWORD
     label: SMTP Password
-    description: Пароль SMTP (для Gmail используйте пароль приложения)
+    description: Пароль SMTP
     type: string
     required: true
     secret: true
 
   - param: FROM_EMAIL
     label: From Email
-    description: Email отправителя (должен соответствовать SMTP_USERNAME)
+    description: Email отправителя
     type: string
     required: true
-    validationRegex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-    validationErrorMessage: "Пожалуйста, введите корректный email адрес"
 
   - param: COLLECTION_PATH
     label: Collection Path
-    description: Путь к коллекции Firestore, где будут отслеживаться новые документы
+    description: Путь к коллекции Firestore
     type: string
     required: true
-    validationRegex: "^[^/]+(/[^/]+)*$"
-    validationErrorMessage: "Путь коллекции должен быть в формате 'collection' или 'collection/document/collection'"
 
   - param: USER_COLLECTION
     label: User Collection

@@ -1,22 +1,20 @@
 {
   "name": "gulyaly-email-send-trigger",
-  "version": "0.0.10",
+  "version": "0.0.1",
   "description": "Firebase Extension для отправки email при создании документа в Firestore",
-  "main": "index.js",
+  "main": "src/index.js",
   "engines": {
     "node": "18"
   },
   "dependencies": {
     "firebase-admin": "^11.11.0",
     "firebase-functions": "^4.5.0",
-    "nodemailer": "^6.9.7",
-    "handlebars": "^4.7.8"
+    "nodemailer": "^6.9.7"
   },
   "private": true,
   "scripts": {
-    "build": "tsc",
-    "serve": "npm run build && firebase emulators:start --only functions",
-    "shell": "npm run build && firebase functions:shell",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
