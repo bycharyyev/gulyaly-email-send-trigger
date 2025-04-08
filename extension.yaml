@@ -1,94 +1,123 @@
 name: gulyaly-email-send-trigger
-version: 0.0.1
+version: 0.0.5
 specVersion: v1beta
-displayName: Gulyaly Team Firestore Trigger Email
-description: |
-  Безопасное и универсальное расширение для отправки email при создании документа в Firestore.
-  Поддерживает шаблоны Handlebars, мультиязычность, готовые шаблоны и API для отправки email.
+displayName: Email Trigger for Firestore
+description: >-
+  Automatically sends emails when documents are created in Firestore using customizable templates and multiple language support.
+
+license: Apache-2.0
 
 author:
   authorName: Gulyaly Team
   url: https://github.com/bycharyyev
 
-license: Apache-2.0
-sourceUrl: https://github.com/gulyaly/firestore-trigger-email
+sourceUrl: https://github.com/bycharyyev/gulyaly-email-send-trigger
+releaseNotesUrl: https://github.com/bycharyyev/gulyaly-email-send-trigger/releases
+
+billingRequired: true
+
+apis:
+  - apiName: firestore.googleapis.com
+    reason: Needed to read and write to Firestore
+
+roles:
+  - role: datastore.user
+    reason: Allows the extension to read from and write to Cloud Firestore
+
+resources:
+  - name: sendEmailOnCreate
+    type: firebaseextensions.v1beta.function
+    description: Sends emails when documents are created in the specified collection
+    properties:
+      location: ${param:LOCATION}
+      runtime: nodejs18
+      sourceRepository:
+        url: https://github.com/bycharyyev/gulyaly-email-send-trigger
+        ref: main
+        path: functions
+      eventTrigger:
+        eventType: providers/cloud.firestore/eventTypes/document.create
+        resource: projects/${param:PROJECT_ID}/databases/(default)/documents/${param:COLLECTION_PATH}/{documentId}
+
+params:
+  - param: LOCATION
+    label: Cloud Functions Location
+    description: Where do you want to deploy the functions created for this extension?
+    type: select
+    options:
+      - label: Iowa (us-central1)
+        value: us-central1
+      - label: South Carolina (us-east1)
+        value: us-east1
+      - label: Belgium (europe-west1)
+        value: europe-west1
+      - label: London (europe-west2)
+        value: europe-west2
+      - label: Hong Kong (asia-east2)
+        value: asia-east2
+    default: us-central1
+    required: true
+
+  - param: COLLECTION_PATH
+    label: Collection Path
+    description: What is the path to the collection that contains the documents that trigger email sending?
+    type: string
+    default: "emails"
+    required: true
+
+  - param: SMTP_HOST
+    label: SMTP Host
+    description: The hostname of your SMTP server
+    type: string
+    required: true
+
+  - param: SMTP_PORT
+    label: SMTP Port
+    description: The port of your SMTP server
+    type: string
+    default: "587"
+    required: true
+
+  - param: SMTP_USERNAME
+    label: SMTP Username
+    description: The username for SMTP authentication
+    type: string
+    required: true
+
+  - param: SMTP_PASSWORD
+    label: SMTP Password
+    description: The password for SMTP authentication
+    type: secret
+    required: true
+
+  - param: FROM_EMAIL
+    label: From Email
+    description: The email address to send emails from
+    type: string
+    required: true
+
+  - param: DEFAULT_LANGUAGE
+    label: Default Language
+    description: The default language for email templates
+    type: select
+    options:
+      - label: Russian
+        value: ru
+      - label: English
+        value: en
+    default: ru
+    required: true
 
 # Добавляем информацию о бренде
 branding:
   color: "#4285F4"  # Цвет бренда Google Blue
   icon: icon.png    # Путь к иконке
 
-roles:
-  - role: firebaseauth.admin
-    reason: Требуется для аутентификации API запросов
-  - role: firestore.admin
-    reason: Требуется для чтения и записи данных в Firestore
-
-resources:
-  - name: sendEmail
-    type: firebaseextensions.v1beta.function
-    description: Отправляет email при создании документа в Firestore
-    properties:
-      runtime: nodejs18
-      location: us-central1
-      eventTrigger:
-        eventType: providers/cloud.firestore/eventTypes/document.create
-        resource: projects/${PROJECT_ID}/databases/(default)/documents/${COLLECTION_PATH}/{documentId}
-      codebase: functions
-
-  - name: sendEmailApi
-    type: firebaseextensions.v1beta.function
-    description: API для отправки email из приложений
-    properties:
-      runtime: nodejs18
-      location: us-central1
-      httpsTrigger: {}
-      codebase: functions
-
-params:
-  - param: SMTP_HOST
-    label: SMTP Host
-    description: Хост SMTP сервера
-    type: string
-    required: true
-
-  - param: SMTP_PORT
-    label: SMTP Port
-    description: Порт SMTP сервера
-    type: string
-    required: true
-    default: "587"
-
-  - param: SMTP_USERNAME
-    label: SMTP Username
-    description: Имя пользователя SMTP
-    type: string
-    required: true
-
-  - param: SMTP_PASSWORD
-    label: SMTP Password
-    description: Пароль SMTP
-    type: string
-    required: true
-    secret: true
-
-  - param: FROM_EMAIL
-    label: From Email
-    description: Email адрес отправителя
-    type: string
-    required: true
-
   - param: TO_EMAIL
     label: To Email
     description: Email адрес получателя (если не указан в документе)
     type: string
     required: false
-
-  - param: COLLECTION_PATH
-    label: Collection Path
-    description: Путь к коллекции Firestore
-    type: string
-    required: true
 
   - param: TEMPLATE_ENGINE
     label: Template Engine
@@ -262,36 +291,4 @@ params:
     description: Задержка между попытками восстановления (в секундах)
     type: string
     required: false
-    default: "5"
-
-  - param: DEFAULT_LANGUAGE
-    label: Default Language
-    description: Язык по умолчанию для шаблонов email
-    type: string
-    required: false
-    default: "ru"
-    select:
-      - label: Русский
-        value: ru
-      - label: English
-        value: en
-      - label: Español
-        value: es
-      - label: Français
-        value: fr
-      - label: Deutsch
-        value: de
-      - label: Italiano
-        value: it
-      - label: Português
-        value: pt
-      - label: Türkçe
-        value: tr
-      - label: 中文
-        value: zh
-      - label: 日本語
-        value: ja
-      - label: 한국어
-        value: ko
-      - label: العربية
-        value: ar 
+    default: "5" 
